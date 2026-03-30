@@ -1,44 +1,60 @@
-name: CI для тг бота
+name: CI/CD для тг бота
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 jobs:
-  test:
+  CI:
     runs-on: ubuntu-latest
     env:
       BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
     steps:
       - name: проверка репозитория
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: устанавливаем питон
+      - name: установка питона
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      - name: устанавливаем зависимости
+      - name: установка зависимостей
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest
+
       - name: запуск тестов
         run: pytest test.py
-  build:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - name: проверка репозитория
-        uses: actions/checkout@v3
 
-      - name: установка Docker
+      - name: сборка образа докера
+        run: docker build -t tg-bot:${{ github.sha }} .
+
+      - name: логинимся в реестр контейнеров гитхаба
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: пушим образ в реестр
         run: |
-          curl -fsSL https://get.docker.com -o get-docker.sh
-          sh get-docker.sh
-          sudo usermod -aG docker $USER
-          docker --version
-          docker compose version
-
-      - name: создание и запуск бота через докер композ
-        run: docker compose up --build -d
+          docker tag tg-bot:${{ github.sha }} ghcr.io/${{ github.repository_owner }}/tg-bot:${{ github.sha }} 
+          docker push ghcr.io/${{ github.repository_owner }}/tg-bot:${{ github.sha }}
+  CD:
+    runs-on: ubuntu-latest
+    needs: CI
+    steps:
+      - name: деплоим на виртуалку через SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/tgbotproject/test
+            echo "пуллим последний образ"
+            docker pull ghcr.io/${GITHUB_REPOSITORY_OWNER}/tg-bot:${GITHUB_SHA}
+            echo "перезапускаем контейнеры"
+            docker compose down
+            docker compose up -d
+            echo "деплой закончен) $(date)"
