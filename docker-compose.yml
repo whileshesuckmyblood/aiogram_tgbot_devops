@@ -8,6 +8,7 @@ services:
       - .env
     expose:
       - "8080"
+    pull_policy: always
 
   nginx:
     image: nginx:alpine
