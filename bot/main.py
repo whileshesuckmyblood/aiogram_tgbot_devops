@@ -11,6 +11,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 TOKEN = os.getenv("BOT_TOKEN")
 DOMAIN = os.getenv("DOMAIN")
+PORT = int(os.getenv("PORT", 8080))
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -23,52 +24,65 @@ async def start(message: types.Message):
 async def echo(message: types.Message):
     await message.answer(f"Эхо: {message.text}")
 
+# healthcheck (для nginx / мониторинга)
 async def healthcheck(request):
-    return aiohttp.web.Response(text="✅ Bot is running via webhook!", status=200)
+    return aiohttp.web.Response(text="OK", status=200)
 
+# ВАЖНО: нормальная установка webhook
 async def on_startup(bot: Bot):
-    await asyncio.sleep(3)
+    await asyncio.sleep(5)  # даём nginx и сети подняться
+
     if not DOMAIN:
-        logging.error("❌ DOMAIN не указан в .env")
+        logging.error("❌ DOMAIN не указан")
         return
-    
+
     webhook_url = f"https://{DOMAIN}/webhook"
+
     try:
-        result = await bot.set_webhook(webhook_url, drop_pending_updates=True)
+        result = await bot.set_webhook(
+            url=webhook_url,
+            drop_pending_updates=True
+        )
         if result:
-            logging.info(f"✅ Webhook УСПЕШНО установлен: {webhook_url}")
+            logging.info(f"✅ Webhook установлен: {webhook_url}")
         else:
-            logging.warning("⚠️ set_webhook вернул False")
+            logging.error("❌ set_webhook вернул False")
     except Exception as e:
-        logging.error(f"❌ Ошибка при установке webhook: {e}")
+        logging.exception("❌ Ошибка при установке webhook")
 
 async def main():
-    logging.info("🚀 Запуск Telegram Echo Bot...")
+    logging.info("🚀 Запуск бота...")
+
+    # 👇 ВОТ ЭТО КРИТИЧЕСКИ ВАЖНО
+    dp.startup.register(on_startup)
 
     app = aiohttp.web.Application()
-    
-    # Главная страница
+
+    # health endpoint
     app.router.add_get("/", healthcheck)
-    
-    # Webhook для Telegram
+
+    # webhook endpoint
     SimpleRequestHandler(
         dispatcher=dp,
         bot=bot,
     ).register(app, path="/webhook")
 
-    # Важно! Подключаем on_startup
-    setup_application(app, dp, bot=bot, on_startup=on_startup)
+    setup_application(app, dp, bot=bot)
 
     runner = aiohttp.web.AppRunner(app)
     await runner.setup()
-    site = aiohttp.web.TCPSite(runner, host="0.0.0.0", port=8080)
+
+    site = aiohttp.web.TCPSite(
+        runner,
+        host="0.0.0.0",
+        port=PORT
+    )
     await site.start()
 
-    logging.info(f"✅ Сервер слушает порт 8080")
-    logging.info(f"🌐 Целевой webhook: https://{DOMAIN}/webhook")
+    logging.info(f"✅ Сервер слушает порт {PORT}")
+    logging.info(f"🌐 Webhook URL: https://{DOMAIN}/webhook")
 
     await asyncio.Event().wait()
-
 
 if __name__ == "__main__":
     asyncio.run(main())
