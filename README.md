@@ -33,5 +33,6 @@ ROADMAP:
 В ПРОЦЕССЕ:
 - REDIS
 - Ansible
+
 ПЛАНИРУЕТСЯ:
 - Переход на k3s вместо docker-compose.
