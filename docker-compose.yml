@@ -16,6 +16,7 @@ services:
         condition: service_healthy
     networks:
       - internal
+      - monitoring_net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/"]
       interval: 30s
@@ -27,7 +28,7 @@ services:
     image: mirror.gcr.io/library/redis:7-alpine
     container_name: redis
     restart: unless-stopped
-    command: redis-server --save 60 1 --loglevel notice --loglevel warning
+    command: redis-server --save 60 1 --loglevel notice
     volumes:
       - redis_data:/data
     networks:
@@ -85,7 +86,6 @@ services:
 networks:
   internal:
     driver: bridge
-    internal: true
 
   monitoring_net:
     driver: bridge
