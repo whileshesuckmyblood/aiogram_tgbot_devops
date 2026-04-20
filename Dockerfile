@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
 
 COPY requirements.txt .
+
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 FROM python:3.11-slim AS runner
@@ -17,7 +18,7 @@ FROM python:3.11-slim AS runner
 WORKDIR /app
 
 COPY --from=builder /install /usr/local
-COPY main.py .
+COPY ./bot/main.py .
 
 RUN useradd -m botuser && chown -R botuser /app
 USER botuser
